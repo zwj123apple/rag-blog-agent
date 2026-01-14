@@ -1,0 +1,5 @@
+# ChromaDB 配置文件
+# 禁用遥测数据收集
+
+[telemetry]
+enabled = false

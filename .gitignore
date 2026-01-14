@@ -1,0 +1,98 @@
+# ==================== 全局通用忽略 ====================
+# 操作系统文件
+.DS_Store                # Mac
+Thumbs.db                # Windows
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Git本身（保留.gitignore）
+!.gitignore
+
+# ==================== Backend (Python) 专属忽略 ====================
+# 虚拟环境（backend下的venv/.venv）
+backend/venv/
+backend/.venv/
+backend/env/
+backend/ENV/
+
+# Python字节码
+backend/__pycache__/
+backend/*.py[cod]
+backend/*$py.class
+backend/.eggs/
+backend/*.egg-info/
+backend/dist/
+backend/build/
+
+# 环境变量（backend下的.env，含API Key）
+backend/.env
+backend/.env.*
+!backend/.env.example  # 保留示例文件（无真实密钥）
+
+# Jupyter/IPython
+backend/.ipynb_checkpoints/
+backend/.pytest_cache/
+backend/.coverage
+backend/htmlcov/
+
+# AI相关（模型/数据/日志）
+backend/models/
+backend/data/
+backend/datasets/
+backend/*.pkl
+backend/*.log
+backend/logs/
+
+# ==================== Frontend (React) 专属忽略 ====================
+# Node依赖（核心，体积大）
+frontend/node_modules/
+
+# 构建产物（打包后的静态文件）
+frontend/build/
+frontend/dist/
+frontend/out/
+
+# 环境变量（React的.env文件）
+frontend/.env
+frontend/.env.local
+frontend/.env.development.local
+frontend/.env.test.local
+frontend/.env.production.local
+
+# npm/yarn缓存/日志
+frontend/.npm
+frontend/yarn-error.log
+frontend/yarn-debug.log
+frontend/.yarn/cache
+frontend/.yarn/unplugged
+frontend/.yarn/build-state.yml
+frontend/.yarn/install-state.gz
+
+# React开发相关
+frontend/.pnp
+frontend/.pnp.js
+frontend/coverage/
+frontend/.eslintcache
+frontend/typings/
+
+# 前端编辑器/缓存
+frontend/.parcel-cache/
+frontend/.next/
+frontend/npm-debug.log*
+
+# ==================== IDE/编辑器通用忽略 ====================
+# VS Code
+.vscode/
+*.swp
+*.swo
+
+# PyCharm/IntelliJ
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# WebStorm
+frontend/.idea/

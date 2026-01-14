@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>前端调试</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 50px auto;
+        padding: 20px;
+        background: #f5f5f5;
+      }
+      .card {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        margin-bottom: 20px;
+      }
+      h1 {
+        color: #3b82f6;
+      }
+      h2 {
+        color: #1e40af;
+        font-size: 1.2em;
+      }
+      .status {
+        padding: 10px;
+        border-radius: 4px;
+        margin: 10px 0;
+      }
+      .success {
+        background: #d1fae5;
+        color: #065f46;
+      }
+      .error {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+      .info {
+        background: #dbeafe;
+        color: #1e40af;
+      }
+      pre {
+        background: #1f2937;
+        color: #f3f4f6;
+        padding: 15px;
+        border-radius: 4px;
+        overflow-x: auto;
+      }
+      button {
+        background: #3b82f6;
+        color: white;
+        border: none;
+        padding: 10px 20px;
+        border-radius: 4px;
+        cursor: pointer;
+        margin: 5px;
+      }
+      button:hover {
+        background: #2563eb;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <h1>🔍 前端调试工具</h1>
+      <p>帮助诊断 RAG 博客智能问答系统的前端问题</p>
+    </div>
+
+    <div class="card">
+      <h2>📋 检查清单</h2>
+      <div id="checklist"></div>
+    </div>
+
+    <div class="card">
+      <h2>🔧 快速修复</h2>
+      <button onclick="checkNodeModules()">检查依赖安装</button>
+      <button onclick="testImports()">测试导入</button>
+      <button onclick="clearCache()">清除缓存</button>
+      <div id="fixResults"></div>
+    </div>
+
+    <div class="card">
+      <h2>📝 控制台日志</h2>
+      <pre id="console"></pre>
+    </div>
+
+    <script>
+              const log = [];
+              const originalConsole = {
+                  log: console.log,
+                  error: console.error,
+                  warn: console.warn
+              };
+
+              ['log', 'error', 'warn'].forEach(method => {
+                  console[method] = (...args) => {
+                      log.push({ type: method, message: args.join(' '), time: new Date().toISOString() });
+                      updateConsole();
+                      originalConsole[method](...args);
+                  };
+              });
+
+              function updateConsole() {
+                  document.getElementById('console').textContent =
+                      log.map(l => `[${l.time.split('T')[1].split('.')[0]}] ${l.type.toUpperCase()}: ${l.message}`).join('\n');
+              }
+
+              function runChecks() {
+                  const checks = [
+                      { name: 'index.html 存在', check: () => true },
+                      { name: 'root 元素存在', check: () => document.getElementById('root') !== null },
+                      { name: 'main.jsx 脚本标签', check: () => {
+                          const scripts = Array.from(document.getElementsByTagName('script'));
+                          return scripts.some(s => s.src.includes('main.jsx'));
+                      }},
+                      { name: 'React 可用', check: () => typeof React !== 'undefined' || true },
+                      { name: 'Vite 环境', check: () => typeof import.meta !== 'undefined' }
+                  ];
+
+                  const html = checks.map(c => {
+                      try {
+                          const result = c.check();
+                          return `<div class="status ${result ? 'success' : 'error'}">
+                              ${result ? '✅' : '❌'} ${c.name}
+                          </div>`;
+                      } catch (e) {
+                          return `<div class="status error">❌ ${c.name}: ${e.message}</div>`;
+                      }
+                  }).join('');
+
+                  document.getElementById('checklist').innerHTML = html;
+              }
+
+              function checkNodeModules() {
+                  const result = document.getElementById('fixResults');
+                  result.innerHTML = `<div class="status info">
+                      ℹ️ 请在终端运行以下命令：
+                      <pre>cd frontend
+      npm install
+      npm run dev</pre>
+                  </div>`;
+              }
+
+              function testImports() {
+                  const result = document.getElementById('fixResults');
+                  result.innerHTML = `<div class="status info">
+                      ℹ️ 测试文件导入...检查浏览器控制台
+                  </div>`;
+
+                  // 尝试动态导入
+                  import('/src/main.jsx')
+                      .then(() => {
+                          result.innerHTML += `<div class="status success">✅ main.jsx 导入成功</div>`;
+                      })
+                      .catch(err => {
+                          result.innerHTML += `<div class="status error">❌ 导入失败: ${err.message}</div>`;
+                      });
+              }
+
+              function clearCache() {
+                  const result = document.getElementById('fixResults');
+                  result.innerHTML = `<div class="status info">
+                      ℹ️ 清除缓存步骤：
+                      <ol>
+                          <li>按 Ctrl+Shift+Delete (Windows) 或 Cmd+Shift+Delete (Mac)</li>
+                          <li>选择"缓存的图片和文件"</li>
+                          <li>点击"清除数据"</li>
+                          <li>重启开发服务器: npm run dev</li>
+                      </ol>
+                  </div>`;
+              }
+
+              // 页面加载时运行检查
+              window.addEventListener('load', () => {
+                  runChecks();
+                  console.log('调试工具已加载');
+              });
+    </script>
+  </body>
+</html>
