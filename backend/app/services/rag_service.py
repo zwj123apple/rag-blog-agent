@@ -360,6 +360,58 @@ class RAGService:
             else:
                 return f"抱歉，当前无法生成答案。错误信息：{str(e)}"
     
+    def generate_answer_with_qianwen_stream(self, query: str, context: str = None):
+        """使用千问流式生成答案"""
+        try:
+            if context:
+                prompt = f"""你是一个专业的AI助手。请基于以下参考资料准确回答用户的问题。
+
+参考资料：
+{context}
+
+用户问题：{query}
+
+回答要求：
+1. 主要基于参考资料回答
+2. 如果参考资料不够充分，可以结合你的知识补充
+3. 回答要准确、简洁、有条理
+4. 可以适当引用参考资料中的原文
+
+请回答："""
+            else:
+                prompt = f"""你是一个专业的AI助手。请回答用户的问题。
+
+用户问题：{query}
+
+回答要求：
+1. 回答要准确、专业
+2. 如果不确定，请明确说明
+3. 回答要简洁、有条理
+
+请回答："""
+            
+            stream = self.ai_client.chat.completions.create(
+                model=settings.AI_MODEL,
+                messages=[
+                    {"role": "system", "content": "你是一个专业、友好的AI助手。"},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=2000,
+                temperature=0.7,
+                stream=True
+            )
+            
+            for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta
+                    if hasattr(delta, 'content') and delta.content:
+                        yield delta.content
+            
+        except Exception as e:
+            print(f"千问API流式调用失败: {e}")
+            error_msg = f"抱歉，当前无法生成答案。错误信息：{str(e)}"
+            yield error_msg
+    
     def query(self, question: str, top_k: int = 3) -> Dict:
         """完整查询流程"""
         start_time = time.time()
@@ -367,19 +419,6 @@ class RAGService:
         print(f"\n{'='*60}")
         print(f"开始处理查询: {question}")
         print('='*60)
-
-        # all_docs = self.vectorstore.get()
-        # print(f"知识库总 chunk 数量: {len(all_docs['documents'])}")
-
-        # found = False
-        # for i, content in enumerate(all_docs['documents']):
-        #     if "什么是跨域" in content or "跨域" in content:
-        #         print(f"找到包含'什么是跨域'的 chunk {i}:")
-        #         print(content[:300] + "...")  # 打印前300字看上下文
-        #         found = True
-
-        # if not found:
-        #     print("警告：知识库里完全没有'什么是跨域'相关内容！请检查 PDF 解析和上传过程")
         
         # 步骤1: 混合检索
         retrieved_docs = self.retrieve_documents(question, top_k)
@@ -410,6 +449,70 @@ class RAGService:
             "str_model_used": f"{settings.AI_MODEL} ({mode})"
         }
     
+    def query_stream(self, question: str, top_k: int = 3):
+        """完整查询流程（流式）"""
+        start_time = time.time()
+        
+        print(f"\n{'='*60}")
+        print(f"开始处理流式查询: {question}")
+        print('='*60)
+        
+        try:
+            # 步骤1: 混合检索
+            retrieved_docs = self.retrieve_documents(question, top_k)
+            
+            # 先发送检索到的文档
+            yield {
+                "type": "sources",
+                "data": [
+                    {
+                        "content": doc.content[:200] + "...",
+                        "score": doc.score,
+                        "metadata": doc.metadata.dict()
+                    }
+                    for doc in retrieved_docs
+                ]
+            }
+            
+            # 步骤2: 流式生成答案
+            if retrieved_docs and len(retrieved_docs) > 0:
+                context = "\n\n".join([
+                    f"[文档{i+1}]（相似度：{doc.score:.2f}）\n{doc.content}"
+                    for i, doc in enumerate(retrieved_docs)
+                ])
+                mode = "RAG模式（混合检索+生成）"
+            else:
+                context = None
+                mode = "直接问答模式"
+            
+            # 流式生成答案
+            for content in self.generate_answer_with_qianwen_stream(question, context):
+                yield {
+                    "type": "answer",
+                    "data": content
+                }
+            
+            processing_time = time.time() - start_time
+            
+            # 发送元数据
+            yield {
+                "type": "metadata",
+                "data": {
+                    "processing_time": processing_time,
+                    "model_used": f"{settings.AI_MODEL} ({mode})"
+                }
+            }
+            
+            print(f"✓ 流式查询完成，耗时 {processing_time:.2f}s")
+            print('='*60)
+            
+        except Exception as e:
+            print(f"流式查询错误: {e}")
+            yield {
+                "type": "error",
+                "data": str(e)
+            }
+    
     def clear_all_documents(self):
         """清空所有文档"""
         import shutil
@@ -424,5 +527,3 @@ class RAGService:
         self.bm25_retriever = BM25Retriever()
         
         print("✓ 知识库已清空")
-
-

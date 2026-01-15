@@ -3,16 +3,21 @@
 // 文件上传组件
 // ============================================================
 
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { Upload, Loader2 } from "lucide-react";
 
 export const FileUploader = ({ onUpload, isUploading }) => {
   const fileInputRef = useRef(null);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (file) {
-      await onUpload(file);
+      setUploadProgress(0);
+      await onUpload(file, (progress) => {
+        setUploadProgress(progress);
+      });
+      setUploadProgress(0);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
@@ -45,6 +50,19 @@ export const FileUploader = ({ onUpload, isUploading }) => {
       <p className="text-xs text-gray-500 mt-2 text-center">
         支持 TXT, MD, PDF, DOCX 格式 (最大10MB)
       </p>
+
+      {isUploading && uploadProgress > 0 && (
+        <div className="mt-3">
+          <div className="progress-bar-container">
+            <div
+              className="progress-bar"
+              style={{ width: `${uploadProgress}%` }}
+            >
+              <span className="progress-text">{uploadProgress}%</span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

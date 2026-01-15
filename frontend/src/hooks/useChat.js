@@ -1,6 +1,6 @@
 // ============================================================
 // frontend/src/hooks/useChat.js
-// 聊天Hook
+// 聊天Hook - 支持流式响应
 // ============================================================
 
 import { useState } from "react";
@@ -10,7 +10,7 @@ export const useChat = () => {
   const [messages, setMessages] = useState([]);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const sendMessage = async (question) => {
+  const sendMessage = async (question, useStream = true) => {
     const userMsg = {
       type: "user",
       content: question,
@@ -20,27 +20,116 @@ export const useChat = () => {
     setMessages((prev) => [...prev, userMsg]);
     setIsProcessing(true);
 
-    try {
-      const response = await api.query(question);
-      const assistantMsg = {
-        type: "assistant",
-        content: response.data.answer,
-        retrievedDocs: response.data.retrieved_docs,
-        processingTime: response.data.processing_time,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, assistantMsg]);
-      return response.data;
-    } catch (error) {
-      const errorMsg = {
-        type: "error",
-        content: error.response?.data?.detail || error.message,
-        timestamp: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
-      throw error;
-    } finally {
-      setIsProcessing(false);
+    const assistantMsgId = Date.now();
+
+    if (useStream) {
+      // 流式响应模式
+      try {
+        let currentAnswer = "";
+        let retrievedDocs = [];
+        let processingTime = 0;
+
+        // 添加空的助手消息占位
+        const assistantMsg = {
+          id: assistantMsgId,
+          type: "assistant",
+          content: "",
+          retrievedDocs: [],
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+
+        // 流式接收数据
+        await api.queryStream(question, 3, (chunk) => {
+          if (chunk.type === "sources") {
+            retrievedDocs = chunk.data;
+          } else if (chunk.type === "answer") {
+            currentAnswer += chunk.data;
+            // 实时更新消息
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMsgId
+                  ? {
+                      ...msg,
+                      content: currentAnswer,
+                      retrievedDocs: retrievedDocs,
+                    }
+                  : msg
+              )
+            );
+          } else if (chunk.type === "metadata") {
+            processingTime = chunk.data.processing_time;
+            // 最终更新消息，添加处理时间
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMsgId
+                  ? {
+                      ...msg,
+                      processingTime: processingTime,
+                    }
+                  : msg
+              )
+            );
+          } else if (chunk.type === "error") {
+            console.error("流式查询错误:", chunk.data);
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMsgId
+                  ? {
+                      ...msg,
+                      type: "error",
+                      content: `错误: ${chunk.data}`,
+                    }
+                  : msg
+              )
+            );
+          }
+        });
+
+        return {
+          answer: currentAnswer,
+          retrieved_docs: retrievedDocs,
+          processing_time: processingTime,
+        };
+      } catch (error) {
+        console.error("流式查询失败:", error);
+        const errorMsg = {
+          id: assistantMsgId,
+          type: "error",
+          content: error.message || "查询过程中出现错误，请稍后重试。",
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) =>
+          prev.map((msg) => (msg.id === assistantMsgId ? errorMsg : msg))
+        );
+        throw error;
+      } finally {
+        setIsProcessing(false);
+      }
+    } else {
+      // 非流式响应模式（原有逻辑）
+      try {
+        const response = await api.query(question);
+        const assistantMsg = {
+          type: "assistant",
+          content: response.data.answer,
+          retrievedDocs: response.data.retrieved_docs,
+          processingTime: response.data.processing_time,
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+        return response.data;
+      } catch (error) {
+        const errorMsg = {
+          type: "error",
+          content: error.response?.data?.detail || error.message,
+          timestamp: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, errorMsg]);
+        throw error;
+      } finally {
+        setIsProcessing(false);
+      }
     }
   };
 

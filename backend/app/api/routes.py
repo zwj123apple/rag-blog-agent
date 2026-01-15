@@ -3,9 +3,11 @@ API路由定义
 所有HTTP端点
 """
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from typing import List
 import uuid
 import time
+import json
 from app.models import *
 from app.services.rag_service import RAGService
 from app.services.document_service import DocumentService
@@ -62,6 +64,27 @@ async def query_documents(request: QueryRequest):
     """查询知识库"""
     result = rag_service.query(request.question, request.top_k)
     return QueryResponse(**result)
+
+@router.post("/query/stream")
+async def query_documents_stream(request: QueryRequest):
+    """流式查询知识库"""
+    def generate():
+        try:
+            for chunk in rag_service.query_stream(request.question, request.top_k):
+                # 使用 Server-Sent Events 格式
+                yield f" {json.dumps(chunk, ensure_ascii=False)}\n\n"
+        except Exception as e:
+            yield f" {json.dumps({'type': 'error', 'data': str(e)}, ensure_ascii=False)}\n\n"
+    
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 @router.get("/documents", response_model=List[DocumentInfo])
 async def list_documents():

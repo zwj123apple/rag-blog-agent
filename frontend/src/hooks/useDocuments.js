@@ -23,11 +23,11 @@ export const useDocuments = () => {
     }
   };
 
-  const uploadDocument = async (file) => {
+  const uploadDocument = async (file, onProgress) => {
     try {
       setLoading(true);
       setError(null);
-      const response = await api.uploadDocument(file);
+      const response = await api.uploadDocument(file, onProgress);
       await fetchDocuments();
       return response.data;
     } catch (err) {
