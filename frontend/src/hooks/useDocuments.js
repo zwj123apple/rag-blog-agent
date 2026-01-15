@@ -14,10 +14,17 @@ export const useDocuments = () => {
   const fetchDocuments = async () => {
     try {
       setLoading(true);
+      setError(null);
       const response = await api.getDocuments();
       setDocuments(response.data);
     } catch (err) {
-      setError(err.message);
+      const errorInfo = {
+        message: err.message,
+        details: err.details,
+        type: err.type,
+      };
+      setError(errorInfo);
+      console.error("获取文档列表失败:", errorInfo);
     } finally {
       setLoading(false);
     }
@@ -31,7 +38,13 @@ export const useDocuments = () => {
       await fetchDocuments();
       return response.data;
     } catch (err) {
-      setError(err.response?.data?.detail || err.message);
+      const errorInfo = {
+        message: err.message,
+        details: err.details,
+        type: err.type,
+      };
+      setError(errorInfo);
+      console.error("上传文档失败:", errorInfo);
       throw err;
     } finally {
       setLoading(false);
@@ -41,13 +54,25 @@ export const useDocuments = () => {
   const clearAllDocuments = async () => {
     try {
       setLoading(true);
+      setError(null);
       await api.clearDocuments();
       setDocuments([]);
     } catch (err) {
-      setError(err.message);
+      const errorInfo = {
+        message: err.message,
+        details: err.details,
+        type: err.type,
+      };
+      setError(errorInfo);
+      console.error("清空文档失败:", errorInfo);
+      throw err; // 重新抛出错误，让调用者知道操作失败
     } finally {
       setLoading(false);
     }
+  };
+
+  const clearError = () => {
+    setError(null);
   };
 
   useEffect(() => {
@@ -61,5 +86,6 @@ export const useDocuments = () => {
     uploadDocument,
     clearAllDocuments,
     refreshDocuments: fetchDocuments,
+    clearError,
   };
 };

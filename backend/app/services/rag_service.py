@@ -7,6 +7,10 @@ RAG核心服务 - 改进版
 4. 智能分块：重叠滑动窗口
 """
 import time
+import shutil
+import os
+import gc
+import uuid
 from typing import List, Dict
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import Chroma
@@ -515,15 +519,75 @@ class RAGService:
     
     def clear_all_documents(self):
         """清空所有文档"""
-        import shutil
-        import os
-        
-        if os.path.exists(settings.CHROMA_PERSIST_DIR):
-            shutil.rmtree(settings.CHROMA_PERSIST_DIR)
-        
-        self.vectorstore = self._init_vectorstore()
-        self.documents_metadata = {}
-        self.all_chunks = []
-        self.bm25_retriever = BM25Retriever()
-        
-        print("✓ 知识库已清空")
+        try:
+            # 1. 先删除 collection（释放文件句柄）
+            try:
+                self.vectorstore._client.delete_collection(
+                    name=self.vectorstore._collection.name
+                )
+                print("✓ ChromaDB collection 已删除")
+            except Exception as e:
+                print(f"删除 collection 时出错: {e}")
+            
+            # 2. 强制关闭客户端连接
+            try:
+                # 获取底层客户端
+                client = self.vectorstore._client
+                # 尝试关闭客户端
+                if hasattr(client, '_client') and hasattr(client._client, 'close'):
+                    client._client.close()
+                # 删除vectorstore
+                del self.vectorstore
+                print("✓ Vectorstore 连接已关闭")
+            except Exception as e:
+                print(f"关闭 vectorstore 时出错: {e}")
+            
+            # 3. 强制垃圾回收，释放所有引用
+            gc.collect()
+            time.sleep(0.5)  # 等待系统释放文件句柄
+            print("✓ 已执行垃圾回收")
+            
+            # 4. 删除物理文件（Windows上可能需要多次尝试）
+            if os.path.exists(settings.CHROMA_PERSIST_DIR):
+                max_retries = 3
+                for attempt in range(max_retries):
+                    try:
+                        shutil.rmtree(settings.CHROMA_PERSIST_DIR)
+                        print(f"✓ 目录已删除: {settings.CHROMA_PERSIST_DIR}")
+                        break
+                    except PermissionError as e:
+                        if attempt < max_retries - 1:
+                            print(f"⚠️ 删除失败，{0.5}秒后重试... ({attempt + 1}/{max_retries})")
+                            time.sleep(0.5)
+                            gc.collect()
+                        else:
+                            print(f"⚠️ 无法删除目录（文件被占用），使用备用方案...")
+                            # 最后尝试：重命名旧目录
+                            backup_dir = f"{settings.CHROMA_PERSIST_DIR}_bak_{uuid.uuid4().hex[:8]}"
+                            try:
+                                os.rename(settings.CHROMA_PERSIST_DIR, backup_dir)
+                                print(f"✓ 目录已重命名为: {backup_dir}")
+                                print(f"ℹ️  请手动删除旧目录: {backup_dir}")
+                            except Exception as rename_error:
+                                print(f"❌ 重命名也失败: {rename_error}")
+                                print("⚠️  建议：停止服务后手动删除 chroma_db 目录")
+            
+            # 5. 重新初始化
+            self.vectorstore = self._init_vectorstore()
+            self.documents_metadata = {}
+            self.all_chunks = []
+            self.bm25_retriever = BM25Retriever()
+            
+            print("✓ 知识库已清空并重新初始化")
+            
+        except Exception as e:
+            print(f"❌ 清空知识库时出错: {e}")
+            # 即使出错也要重新初始化
+            try:
+                self.vectorstore = self._init_vectorstore()
+                self.documents_metadata = {}
+                self.all_chunks = []
+                self.bm25_retriever = BM25Retriever()
+            except:
+                pass
+            raise e

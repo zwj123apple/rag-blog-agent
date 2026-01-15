@@ -41,8 +41,19 @@ export const useChat = () => {
 
         // 流式接收数据
         await api.queryStream(question, 3, (chunk) => {
+          console.log("📦 收到数据块:", chunk);
+
           if (chunk.type === "sources") {
             retrievedDocs = chunk.data;
+            console.log("📚 收到文档来源:", retrievedDocs);
+            // 立即更新 retrievedDocs
+            setMessages((prev) =>
+              prev.map((msg) =>
+                msg.id === assistantMsgId
+                  ? { ...msg, retrievedDocs: retrievedDocs }
+                  : msg
+              )
+            );
           } else if (chunk.type === "answer") {
             currentAnswer += chunk.data;
             // 实时更新消息
@@ -59,6 +70,7 @@ export const useChat = () => {
             );
           } else if (chunk.type === "metadata") {
             processingTime = chunk.data.processing_time;
+            console.log("ℹ️ 收到元数据:", chunk.data);
             // 最终更新消息，添加处理时间
             setMessages((prev) =>
               prev.map((msg) =>
@@ -71,7 +83,7 @@ export const useChat = () => {
               )
             );
           } else if (chunk.type === "error") {
-            console.error("流式查询错误:", chunk.data);
+            console.error("❌ 流式查询错误:", chunk.data);
             setMessages((prev) =>
               prev.map((msg) =>
                 msg.id === assistantMsgId
@@ -93,10 +105,21 @@ export const useChat = () => {
         };
       } catch (error) {
         console.error("流式查询失败:", error);
+
+        // 构建友好的错误消息
+        let errorContent = "查询过程中出现错误，请稍后重试。";
+        if (error.message) {
+          errorContent = error.message;
+          if (error.details) {
+            errorContent += `\n\n${error.details}`;
+          }
+        }
+
         const errorMsg = {
           id: assistantMsgId,
           type: "error",
-          content: error.message || "查询过程中出现错误，请稍后重试。",
+          content: errorContent,
+          errorType: error.type,
           timestamp: new Date().toISOString(),
         };
         setMessages((prev) =>
@@ -120,9 +143,19 @@ export const useChat = () => {
         setMessages((prev) => [...prev, assistantMsg]);
         return response.data;
       } catch (error) {
+        // 构建友好的错误消息
+        let errorContent = "查询过程中出现错误，请稍后重试。";
+        if (error.message) {
+          errorContent = error.message;
+          if (error.details) {
+            errorContent += `\n\n${error.details}`;
+          }
+        }
+
         const errorMsg = {
           type: "error",
-          content: error.response?.data?.detail || error.message,
+          content: errorContent,
+          errorType: error.type,
           timestamp: new Date().toISOString(),
         };
         setMessages((prev) => [...prev, errorMsg]);

@@ -10,6 +10,9 @@ import {
   Loader2,
   AlertCircle,
   CheckCircle,
+  Wifi,
+  Clock,
+  XCircle,
 } from "lucide-react";
 
 export const MessageList = ({ messages }) => {
@@ -32,11 +35,40 @@ export const MessageList = ({ messages }) => {
     }
 
     if (msg.type === "error") {
+      // 根据错误类型选择图标和样式
+      const getErrorIcon = (errorType) => {
+        switch (errorType) {
+          case "network":
+            return Wifi;
+          case "timeout":
+            return Clock;
+          case "server":
+          case "validation":
+            return XCircle;
+          default:
+            return AlertCircle;
+        }
+      };
+
+      const ErrorIcon = getErrorIcon(msg.errorType);
+
       return (
         <div className="flex justify-start">
-          <div className="px-4 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-800 flex items-center gap-2">
-            <AlertCircle className="w-4 h-4" />
-            {msg.content}
+          <div className="max-w-2xl px-5 py-4 bg-red-50 border border-red-200 rounded-xl shadow-md">
+            <div className="flex items-start gap-3">
+              <ErrorIcon className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-red-700">错误</span>
+                  <span className="text-xs text-red-500">
+                    {new Date(msg.timestamp).toLocaleTimeString("zh-CN")}
+                  </span>
+                </div>
+                <p className="text-sm text-red-800 whitespace-pre-wrap leading-relaxed">
+                  {msg.content}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       );

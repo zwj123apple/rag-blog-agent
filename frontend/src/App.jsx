@@ -6,7 +6,6 @@
 import React, { useState } from "react";
 import { ChatInterface } from "./components/ChatInterface";
 import { DocumentManager } from "./components/DocumentManager";
-import { FileUploader } from "./components/FileUploader";
 import { SystemStats } from "./components/SystemStats";
 import { useChat } from "./hooks/useChat";
 import { useDocuments } from "./hooks/useDocuments";
@@ -18,9 +17,10 @@ function App() {
   const {
     documents,
     loading: isUploading,
-    error,
+    error: documentError,
     uploadDocument,
     clearAllDocuments,
+    clearError: clearDocumentError,
   } = useDocuments();
 
   // 处理发送消息
@@ -36,9 +36,9 @@ function App() {
   };
 
   // 处理文件上传
-  const handleUploadFile = async (file) => {
+  const handleUploadFile = async (file, onProgress) => {
     try {
-      await uploadDocument(file);
+      await uploadDocument(file, onProgress);
     } catch (error) {
       console.error("上传失败:", error);
     }
@@ -91,16 +91,6 @@ function App() {
           </div>
         </header>
 
-        {/* 错误提示 */}
-        {error && (
-          <div className="bg-red-50 border-b border-red-200 px-6 py-3">
-            <div className="flex items-center gap-2 text-red-800">
-              <AlertCircle className="w-4 h-4" />
-              <span className="text-sm font-medium">{error}</span>
-            </div>
-          </div>
-        )}
-
         {/* 主内容区 */}
         <div className="flex-1 flex overflow-hidden">
           {/* 左侧：聊天界面 */}
@@ -120,16 +110,14 @@ function App() {
             {/* 系统状态 */}
             <SystemStats />
 
-            {/* 文件上传 */}
-            <FileUploader
-              onUpload={handleUploadFile}
-              isUploading={isUploading}
-            />
-
-            {/* 文档列表 */}
+            {/* 文档管理（包含上传和列表） */}
             <DocumentManager
               documents={documents}
               onClear={handleClearDocuments}
+              onUpload={handleUploadFile}
+              isUploading={isUploading}
+              error={documentError}
+              onClearError={clearDocumentError}
             />
           </div>
         </div>

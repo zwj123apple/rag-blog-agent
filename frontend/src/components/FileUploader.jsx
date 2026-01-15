@@ -9,17 +9,51 @@ import { Upload, Loader2 } from "lucide-react";
 export const FileUploader = ({ onUpload, isUploading }) => {
   const fileInputRef = useRef(null);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [uploadStatus, setUploadStatus] = useState(""); // 'uploading' | 'processing' | 'complete'
 
   const handleFileChange = async (e) => {
     const file = e.target.files[0];
     if (file) {
+      console.log("📤 开始上传文件:", file.name);
       setUploadProgress(0);
-      await onUpload(file, (progress) => {
-        setUploadProgress(progress);
-      });
-      setUploadProgress(0);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
+      setUploadStatus("uploading");
+
+      try {
+        await onUpload(file, (progress) => {
+          console.log("📊 上传进度:", progress + "%");
+          setUploadProgress(progress);
+
+          // 根据进度更新状态文本
+          if (progress <= 60) {
+            setUploadStatus("uploading");
+          } else if (progress < 100) {
+            setUploadStatus("processing");
+          }
+        });
+
+        // 上传完成
+        console.log("✅ 上传完成");
+        setUploadProgress(100);
+        setUploadStatus("complete");
+
+        // 延迟重置，让用户看到完成状态
+        setTimeout(() => {
+          setUploadProgress(0);
+          setUploadStatus("");
+          if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+          }
+        }, 1000);
+      } catch (error) {
+        console.error("❌ 上传失败:", error);
+        setUploadStatus("error");
+        setTimeout(() => {
+          setUploadProgress(0);
+          setUploadStatus("");
+          if (fileInputRef.current) {
+            fileInputRef.current.value = "";
+          }
+        }, 2000);
       }
     }
   };
@@ -53,13 +87,22 @@ export const FileUploader = ({ onUpload, isUploading }) => {
 
       {isUploading && uploadProgress > 0 && (
         <div className="mt-3">
+          <div className="flex justify-between items-center mb-1.5">
+            <span className="text-xs font-medium text-gray-700">
+              {uploadStatus === "uploading" && "📤 正在上传文件..."}
+              {uploadStatus === "processing" && "⚙️ 正在处理文档..."}
+              {uploadStatus === "complete" && "✅ 上传完成！"}
+              {uploadStatus === "error" && "❌ 上传失败"}
+            </span>
+            <span className="text-xs font-semibold text-blue-600">
+              {uploadProgress}%
+            </span>
+          </div>
           <div className="progress-bar-container">
             <div
               className="progress-bar"
               style={{ width: `${uploadProgress}%` }}
-            >
-              <span className="progress-text">{uploadProgress}%</span>
-            </div>
+            />
           </div>
         </div>
       )}
