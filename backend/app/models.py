@@ -6,11 +6,17 @@ from pydantic import BaseModel, Field
 from typing import List, Optional
 from datetime import datetime
 
+class ChatMessage(BaseModel):
+    """聊天消息"""
+    role: str = Field(..., description="角色：user 或 assistant")
+    content: str = Field(..., description="消息内容")
+
 class QueryRequest(BaseModel):
     """查询请求模型"""
     question: str = Field(..., min_length=1, description="用户问题")
     top_k: Optional[int] = Field(3, ge=1, le=10, description="返回文档数量")
     include_sources: bool = Field(True, description="是否包含来源信息")
+    chat_history: Optional[List[ChatMessage]] = Field(default=[], description="对话历史（最多10条）")
 
 class DocumentMetadata(BaseModel):
     """文档元数据"""

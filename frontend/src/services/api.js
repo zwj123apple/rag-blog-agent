@@ -11,7 +11,7 @@ const apiClient = axios.create({
   headers: {
     "Content-Type": "application/json",
   },
-  timeout: 30000, // 30秒超时
+  timeout: 300000, // 30秒超时
 });
 
 // 错误信息格式化
@@ -154,11 +154,15 @@ export const api = {
   },
 
   // 查询（非流式）
-  query: (question, topK = 3) =>
-    apiClient.post("/query", { question, top_k: topK }),
+  query: (question, topK = 3, chatHistory = []) =>
+    apiClient.post("/query", {
+      question,
+      top_k: topK,
+      chat_history: chatHistory,
+    }),
 
   // 流式查询
-  queryStream: async (question, topK = 3, onChunk) => {
+  queryStream: async (question, topK = 3, onChunk, chatHistory = []) => {
     const response = await fetch(`${API_BASE_URL}/query/stream`, {
       method: "POST",
       headers: {
@@ -167,6 +171,7 @@ export const api = {
       body: JSON.stringify({
         question,
         top_k: topK,
+        chat_history: chatHistory,
       }),
     });
 

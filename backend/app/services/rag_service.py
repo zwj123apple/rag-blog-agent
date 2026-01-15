@@ -277,12 +277,18 @@ class RAGService:
         scored_results.sort(key=lambda x: x[1], reverse=True)
         return scored_results[:top_k]
     
-    def retrieve_documents(self, query: str, top_k: int = 3) -> List[RetrievedDocument]:
+    def retrieve_documents(self, query: str, top_k: int = 3, similarity_threshold: float = 0.6) -> List[RetrievedDocument]:
         """
         增强的文档检索
         1. 查询扩展
         2. 混合检索
         3. 结果去重和重排序
+        4. 相似度过滤
+        
+        Args:
+            query: 查询文本
+            top_k: 返回文档数量
+            similarity_threshold: 相似度阈值（0-1），低于此值的文档将被过滤
         """
         all_results = []
         seen_contents = set()
@@ -295,12 +301,14 @@ class RAGService:
         for exp_query in expanded_queries:
             results = self._hybrid_search(exp_query, top_k=top_k * 2)
             print("="*60)
-            print(results)
+            print(f"检索结果（前3条）:")
+            for i, (content, score, metadata) in enumerate(results[:3]):
+                print(f"  [{i+1}] 分数: {score:.3f} | 内容预览: {content[:50]}...")
             print("="*60)
             
             for content, score, metadata in results:
-                # 去重
-                if content not in seen_contents:
+                # 去重 + 相似度过滤
+                if content not in seen_contents and score >= similarity_threshold:
                     seen_contents.add(content)
                     all_results.append(RetrievedDocument(
                         content=content,
@@ -311,15 +319,79 @@ class RAGService:
         # 3. 按分数排序并返回top_k
         all_results.sort(key=lambda x: x.score, reverse=True)
         
-        print(f"✓ 混合检索完成，找到 {len(all_results[:top_k])} 个相关文档")
+        filtered_count = len(all_results[:top_k])
+        if filtered_count > 0:
+            print(f"✓ 混合检索完成，找到 {filtered_count} 个相关文档（相似度 ≥ {similarity_threshold*100:.0f}%）")
+        else:
+            print(f"⚠️  未找到相关文档（所有文档相似度 < {similarity_threshold*100:.0f}%）")
         
         return all_results[:top_k]
     
-    def generate_answer_with_qianwen(self, query: str, context: str = None) -> str:
-        """使用千问生成答案"""
+    def _build_chat_history(self, chat_history: List[Dict]) -> List[Dict]:
+        """构建聊天历史消息列表"""
+        messages = [{"role": "system", "content": "你是一个专业、友好的AI助手，能够记住对话上下文。"}]
+        for msg in chat_history:
+            messages.append({"role": msg["role"], "content": msg["content"]})
+        return messages
+    
+    def _summarize_history(self, chat_history: List[Dict]) -> str:
+        """总结对话历史（当超过10条时）"""
         try:
+            # 构建要总结的对话内容
+            conversation = "\n".join([
+                f"{'用户' if msg['role'] == 'user' else 'AI'}：{msg['content']}"
+                for msg in chat_history
+            ])
+            
+            response = self.ai_client.chat.completions.create(
+                model=settings.AI_MODEL,
+                messages=[
+                    {"role": "system", "content": "你是一个专业的对话总结助手。"},
+                    {"role": "user", "content": f"""请将以下对话总结为简洁的要点，保留关键信息：
+
+{conversation}
+
+总结要求：
+1. 提取对话的核心主题和关键信息
+2. 保持客观准确
+3. 使用简洁的语言
+4. 字数控制在200字以内
+
+请输出总结："""}
+                ],
+                max_tokens=500,
+                temperature=0.5
+            )
+            
+            summary = response.choices[0].message.content
+            print(f"✓ 对话历史已总结（{len(chat_history)}条 -> 1条摘要）")
+            return summary
+            
+        except Exception as e:
+            print(f"总结对话历史失败: {e}")
+            # 失败时返回简单拼接
+            return "（前面的对话涉及：" + "、".join([msg['content'][:20] for msg in chat_history[:3]]) + "等话题）"
+    
+    def generate_answer_with_qianwen(self, query: str, context: str = None, chat_history: List[Dict] = None) -> str:
+        """使用千问生成答案（支持对话历史）"""
+        try:
+            # 处理对话历史（最多保留10条）
+            messages = []
+            if chat_history and len(chat_history) > 0:
+                # 如果超过10条，总结前面的对话
+                if len(chat_history) > 10:
+                    summary = self._summarize_history(chat_history[:-10])
+                    messages.append({"role": "system", "content": f"你是一个专业、友好的AI助手。对话背景：{summary}"})
+                    # 只保留最近10条
+                    messages.extend(self._build_chat_history(chat_history[-10:])[1:])  # 跳过system消息
+                else:
+                    messages = self._build_chat_history(chat_history)
+            else:
+                messages = [{"role": "system", "content": "你是一个专业、友好的AI助手。"}]
+            
+            # 构建当前问题的提示词
             if context:
-                prompt = f"""你是一个专业的AI助手。请基于以下参考资料准确回答用户的问题。
+                prompt = f"""请基于以下参考资料回答问题。
 
 参考资料：
 {context}
@@ -328,29 +400,19 @@ class RAGService:
 
 回答要求：
 1. 主要基于参考资料回答
-2. 如果参考资料不够充分，可以结合你的知识补充
+2. 结合之前的对话上下文理解问题
 3. 回答要准确、简洁、有条理
 4. 可以适当引用参考资料中的原文
 
 请回答："""
             else:
-                prompt = f"""你是一个专业的AI助手。请回答用户的问题。
-
-用户问题：{query}
-
-回答要求：
-1. 回答要准确、专业
-2. 如果不确定，请明确说明
-3. 回答要简洁、有条理
-
-请回答："""
+                prompt = query  # 直接问答时使用原始问题
             
-            response =  self.ai_client.chat.completions.create(
+            messages.append({"role": "user", "content": prompt})
+            
+            response = self.ai_client.chat.completions.create(
                 model=settings.AI_MODEL,
-                messages=[
-                    {"role": "system", "content": "你是一个专业、友好的AI助手。"},
-                    {"role": "user", "content": prompt}
-                ],
+                messages=messages,
                 max_tokens=2000,
                 temperature=0.7
             )
@@ -364,11 +426,26 @@ class RAGService:
             else:
                 return f"抱歉，当前无法生成答案。错误信息：{str(e)}"
     
-    def generate_answer_with_qianwen_stream(self, query: str, context: str = None):
-        """使用千问流式生成答案"""
+    def generate_answer_with_qianwen_stream(self, query: str, context: str = None, chat_history: List[Dict] = None):
+        """使用千问流式生成答案（支持对话历史）"""
         try:
+            # 处理对话历史（最多保留10条）
+            messages = []
+            if chat_history and len(chat_history) > 0:
+                # 如果超过10条，总结前面的对话
+                if len(chat_history) > 10:
+                    summary = self._summarize_history(chat_history[:-10])
+                    messages.append({"role": "system", "content": f"你是一个专业、友好的AI助手。对话背景：{summary}"})
+                    # 只保留最近10条
+                    messages.extend(self._build_chat_history(chat_history[-10:])[1:])  # 跳过system消息
+                else:
+                    messages = self._build_chat_history(chat_history)
+            else:
+                messages = [{"role": "system", "content": "你是一个专业、友好的AI助手。"}]
+            
+            # 构建当前问题的提示词
             if context:
-                prompt = f"""你是一个专业的AI助手。请基于以下参考资料准确回答用户的问题。
+                prompt = f"""请基于以下参考资料回答问题。
 
 参考资料：
 {context}
@@ -377,29 +454,19 @@ class RAGService:
 
 回答要求：
 1. 主要基于参考资料回答
-2. 如果参考资料不够充分，可以结合你的知识补充
+2. 结合之前的对话上下文理解问题
 3. 回答要准确、简洁、有条理
 4. 可以适当引用参考资料中的原文
 
 请回答："""
             else:
-                prompt = f"""你是一个专业的AI助手。请回答用户的问题。
-
-用户问题：{query}
-
-回答要求：
-1. 回答要准确、专业
-2. 如果不确定，请明确说明
-3. 回答要简洁、有条理
-
-请回答："""
+                prompt = query  # 直接问答时使用原始问题
+            
+            messages.append({"role": "user", "content": prompt})
             
             stream = self.ai_client.chat.completions.create(
                 model=settings.AI_MODEL,
-                messages=[
-                    {"role": "system", "content": "你是一个专业、友好的AI助手。"},
-                    {"role": "user", "content": prompt}
-                ],
+                messages=messages,
                 max_tokens=2000,
                 temperature=0.7,
                 stream=True
@@ -416,28 +483,33 @@ class RAGService:
             error_msg = f"抱歉，当前无法生成答案。错误信息：{str(e)}"
             yield error_msg
     
-    def query(self, question: str, top_k: int = 3) -> Dict:
-        """完整查询流程"""
+    def query(self, question: str, top_k: int = 3, chat_history: List[Dict] = None) -> Dict:
+        """完整查询流程（支持对话历史）"""
         start_time = time.time()
         
         print(f"\n{'='*60}")
         print(f"开始处理查询: {question}")
+        if chat_history:
+            print(f"📝 对话历史: {len(chat_history)} 条")
         print('='*60)
         
         # 步骤1: 混合检索
-        retrieved_docs = self.retrieve_documents(question, top_k)
+        retrieved_docs = self.retrieve_documents(question, top_k, similarity_threshold=0.6)
         
         # 步骤2: 生成答案
         if retrieved_docs and len(retrieved_docs) > 0:
+            # 有相关文档 - RAG模式
             context = "\n\n".join([
                 f"[文档{i+1}]（相似度：{doc.score:.2f}）\n{doc.content}"
                 for i, doc in enumerate(retrieved_docs)
             ])
-            answer = self.generate_answer_with_qianwen(question, context)
-            mode = "RAG模式（混合检索+生成）"
+            answer = self.generate_answer_with_qianwen(question, context, chat_history)
+            mode = "RAG模式（文档检索+AI生成）"
         else:
-            answer = self.generate_answer_with_qianwen(question, context=None)
-            mode = "直接问答模式"
+            # 没有相关文档 - 直接问答模式
+            answer = f"📌 提示：您的问题与已上传的文档内容不太相关（相似度 < 60%），我将基于通用知识为您解答。\n\n"
+            answer += self.generate_answer_with_qianwen(question, context=None, chat_history=chat_history)
+            mode = "直接问答模式（文档无相关内容）"
             retrieved_docs = []
         
         processing_time = time.time() - start_time
@@ -453,17 +525,19 @@ class RAGService:
             "str_model_used": f"{settings.AI_MODEL} ({mode})"
         }
     
-    def query_stream(self, question: str, top_k: int = 3):
-        """完整查询流程（流式）"""
+    def query_stream(self, question: str, top_k: int = 3, chat_history: List[Dict] = None):
+        """完整查询流程（流式，支持对话历史）"""
         start_time = time.time()
         
         print(f"\n{'='*60}")
         print(f"开始处理流式查询: {question}")
+        if chat_history:
+            print(f"📝 对话历史: {len(chat_history)} 条")
         print('='*60)
         
         try:
-            # 步骤1: 混合检索
-            retrieved_docs = self.retrieve_documents(question, top_k)
+            # 步骤1: 混合检索（使用相似度阈值）
+            retrieved_docs = self.retrieve_documents(question, top_k, similarity_threshold=0.6)
             
             # 先发送检索到的文档
             yield {
@@ -480,17 +554,24 @@ class RAGService:
             
             # 步骤2: 流式生成答案
             if retrieved_docs and len(retrieved_docs) > 0:
+                # 有相关文档 - RAG模式
                 context = "\n\n".join([
                     f"[文档{i+1}]（相似度：{doc.score:.2f}）\n{doc.content}"
                     for i, doc in enumerate(retrieved_docs)
                 ])
-                mode = "RAG模式（混合检索+生成）"
+                mode = "RAG模式（文档检索+AI生成）"
             else:
+                # 没有相关文档 - 直接问答模式，先发送提示
                 context = None
-                mode = "直接问答模式"
+                mode = "直接问答模式（文档无相关内容）"
+                # 先发送提示信息
+                yield {
+                    "type": "answer",
+                    "data": "📌 提示：您的问题与已上传的文档内容不太相关（相似度 < 60%），我将基于通用知识为您解答。\n\n"
+                }
             
-            # 流式生成答案
-            for content in self.generate_answer_with_qianwen_stream(question, context):
+            # 流式生成答案（传递对话历史）
+            for content in self.generate_answer_with_qianwen_stream(question, context, chat_history):
                 yield {
                     "type": "answer",
                     "data": content

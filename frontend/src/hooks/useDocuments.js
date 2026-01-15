@@ -8,12 +8,12 @@ import { api } from "../services/api";
 
 export const useDocuments = () => {
   const [documents, setDocuments] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [clearing, setClearing] = useState(false);
   const [error, setError] = useState(null);
 
   const fetchDocuments = async () => {
     try {
-      setLoading(true);
       setError(null);
       const response = await api.getDocuments();
       setDocuments(response.data);
@@ -25,14 +25,12 @@ export const useDocuments = () => {
       };
       setError(errorInfo);
       console.error("获取文档列表失败:", errorInfo);
-    } finally {
-      setLoading(false);
     }
   };
 
   const uploadDocument = async (file, onProgress) => {
     try {
-      setLoading(true);
+      setUploading(true);
       setError(null);
       const response = await api.uploadDocument(file, onProgress);
       await fetchDocuments();
@@ -47,13 +45,13 @@ export const useDocuments = () => {
       console.error("上传文档失败:", errorInfo);
       throw err;
     } finally {
-      setLoading(false);
+      setUploading(false);
     }
   };
 
   const clearAllDocuments = async () => {
     try {
-      setLoading(true);
+      setClearing(true);
       setError(null);
       await api.clearDocuments();
       setDocuments([]);
@@ -67,7 +65,7 @@ export const useDocuments = () => {
       console.error("清空文档失败:", errorInfo);
       throw err; // 重新抛出错误，让调用者知道操作失败
     } finally {
-      setLoading(false);
+      setClearing(false);
     }
   };
 
@@ -81,7 +79,8 @@ export const useDocuments = () => {
 
   return {
     documents,
-    loading,
+    uploading,
+    clearing,
     error,
     uploadDocument,
     clearAllDocuments,

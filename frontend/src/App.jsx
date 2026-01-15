@@ -16,7 +16,8 @@ function App() {
   const { messages, isProcessing, sendMessage, clearMessages } = useChat();
   const {
     documents,
-    loading: isUploading,
+    uploading: isUploading,
+    clearing: isClearing,
     error: documentError,
     uploadDocument,
     clearAllDocuments,
@@ -116,6 +117,7 @@ function App() {
               onClear={handleClearDocuments}
               onUpload={handleUploadFile}
               isUploading={isUploading}
+              isClearing={isClearing}
               error={documentError}
               onClearError={clearDocumentError}
             />

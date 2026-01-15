@@ -13,6 +13,7 @@ export const DocumentManager = ({
   onClear,
   onUpload,
   isUploading,
+  isClearing,
   error,
   onClearError,
 }) => {
@@ -36,13 +37,13 @@ export const DocumentManager = ({
           {documents.length > 0 && (
             <button
               onClick={onClear}
-              disabled={isUploading}
+              disabled={isClearing || isUploading}
               className="text-xs text-red-600 hover:text-red-700 flex items-center gap-1 hover:bg-red-50 px-2 py-1 rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {isUploading ? (
+              {isClearing ? (
                 <>
                   <Loader2 className="w-3 h-3 animate-spin" />
-                  处理中...
+                  清空中...
                 </>
               ) : (
                 <>

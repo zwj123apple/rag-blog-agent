@@ -61,16 +61,20 @@ async def upload_document(file: UploadFile = File(...)):
 
 @router.post("/query", response_model=QueryResponse)
 async def query_documents(request: QueryRequest):
-    """查询知识库"""
-    result = rag_service.query(request.question, request.top_k)
+    """查询知识库（支持对话历史）"""
+    # 转换对话历史格式
+    chat_history = [{"role": msg.role, "content": msg.content} for msg in request.chat_history] if request.chat_history else []
+    result = rag_service.query(request.question, request.top_k, chat_history=chat_history)
     return QueryResponse(**result)
 
 @router.post("/query/stream")
 async def query_documents_stream(request: QueryRequest):
-    """流式查询知识库"""
+    """流式查询知识库（支持对话历史）"""
     def generate():
         try:
-            for chunk in rag_service.query_stream(request.question, request.top_k):
+            # 转换对话历史格式
+            chat_history = [{"role": msg.role, "content": msg.content} for msg in request.chat_history] if request.chat_history else []
+            for chunk in rag_service.query_stream(request.question, request.top_k, chat_history=chat_history):
                 # 使用 Server-Sent Events 格式
                 yield f" {json.dumps(chunk, ensure_ascii=False)}\n\n"
         except Exception as e:

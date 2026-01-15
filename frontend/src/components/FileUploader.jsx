@@ -26,15 +26,15 @@ export const FileUploader = ({ onUpload, isUploading }) => {
           // 根据进度更新状态文本
           if (progress <= 60) {
             setUploadStatus("uploading");
-          } else if (progress < 100) {
+          } else if (progress > 60 && progress < 100) {
             setUploadStatus("processing");
           }
         });
 
-        // 上传完成
+        // 上传完成 - 先设置完成状态，再设置进度100
         console.log("✅ 上传完成");
-        setUploadProgress(100);
         setUploadStatus("complete");
+        setUploadProgress(100);
 
         // 延迟重置，让用户看到完成状态
         setTimeout(() => {
@@ -43,7 +43,7 @@ export const FileUploader = ({ onUpload, isUploading }) => {
           if (fileInputRef.current) {
             fileInputRef.current.value = "";
           }
-        }, 1000);
+        }, 1500);
       } catch (error) {
         console.error("❌ 上传失败:", error);
         setUploadStatus("error");
@@ -60,16 +60,24 @@ export const FileUploader = ({ onUpload, isUploading }) => {
 
   return (
     <div className="p-4 border-b border-gray-200">
-      <label className="flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg cursor-pointer hover:from-blue-700 hover:to-indigo-700 transition-all shadow-md">
+      <label
+        className={`flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-lg transition-all shadow-md select-none ${
+          isUploading
+            ? "cursor-not-allowed opacity-80"
+            : "cursor-pointer hover:from-blue-700 hover:to-indigo-700"
+        }`}
+      >
         {isUploading ? (
           <>
             <Loader2 className="w-4 h-4 animate-spin" />
-            <span className="text-sm font-medium">上传中...</span>
+            <span className="text-sm font-medium select-none">上传中...</span>
           </>
         ) : (
           <>
             <Upload className="w-4 h-4" />
-            <span className="text-sm font-medium">上传博客文档</span>
+            <span className="text-sm font-medium select-none">
+              上传博客文档
+            </span>
           </>
         )}
         <input
